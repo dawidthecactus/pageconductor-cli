@@ -1,0 +1,14 @@
+node_modules/
+.pageconductor/prompts/
+.pageconductor/plans/
+.pageconductor/reports/
+.env
+.env.*
+!.env.example
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+coverage/
+*.log
