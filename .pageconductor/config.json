@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "provider": "opencode",
+  "ollamaModel": "qwen2.5-coder:7b",
+  "framework": "nextjs",
+  "packageManager": "auto",
+  "auditScripts": [
+    "lint",
+    "typecheck",
+    "test",
+    "build"
+  ]
+}
