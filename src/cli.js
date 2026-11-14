@@ -5,6 +5,10 @@ import {
   toolAvailable, assertCleanRepo, validateComponent, savePrompt,
   detectManager, npmScriptCommand, availableAuditScripts, registerUIRegistries
 } from './core.js';
+import {
+  startWorkflow, loadRun, listRuns, approveWorkflow, resumeWorkflow,
+  recoverWorkflow, finishWorkflow, cancelWorkflow, runDirectory
+} from './workflow.js';
 
 const HELP = `PageConductor CLI v${VERSION} - AI-assisted website orchestration (MVP)
 
@@ -15,10 +19,17 @@ Usage:
   pageconductor build "GOAL" [--model NAME] [--apply]
   pageconductor component NAME [--apply]
   pageconductor audit [--run]
+  pageconductor workflow start "GOAL" [--model NAME] [--run]
+  pageconductor workflow list | status RUN_ID
+  pageconductor workflow approve RUN_ID --digest SHA256
+  pageconductor workflow resume RUN_ID
+  pageconductor workflow recover RUN_ID --choice retry-plan|acknowledge-build|retry-audit [--unlock]
+  pageconductor workflow review RUN_ID [--accept]
+  pageconductor workflow cancel RUN_ID
 
 Global options for commands (except doctor): --project DIR
 
-Safety: plan and build preview by default. No auto-push/deploy.
+Safety: workflow start is preview-only unless --run; builds need explicit digest approval. No auto-push/deploy.
 Examples:
   pageconductor init --project .
   pageconductor plan "Design a Power BI portfolio landing page" --run
@@ -143,6 +154,78 @@ function outputAudit(root, opts, config) {
   if (checks.some((c) => c.exitCode !== 0)) process.exitCode = 1;
 }
 
+async function outputWorkflow(root, positionals, options, config) {
+  const [action, ...rest] = positionals;
+  const id = rest[0];
+  if (action === 'start') {
+    if (options.provider && options.provider !== 'opencode') throw new Error('Workflow 0.2 supports OpenCode only. Standalone plan still supports Ollama.');
+    const goal = rest.join(' ').trim();
+    const run = await startWorkflow(root, goal, { model: options.model, run: !!options.run });
+    if (run.preview) { console.log(`WORKFLOW PREVIEW | ${goal}\nUse --run to generate a plan. No files or AI calls made.`); return; }
+    console.log(`Workflow ${run.id}: ${run.state}`);
+    console.log(`Plan: ${join(runDirectory(root, run.id), 'plan.md')}`);
+    console.log(`SHA256: ${run.planDigest}`);
+    console.log(`Review the plan, then: pageconductor workflow approve ${run.id} --digest ${run.planDigest}`);
+    return;
+  }
+  if (action === 'list') {
+    const records = listRuns(root);
+    if (!records.length) console.log('No workflows found.');
+    else for (const record of records) console.log(`${record.id} | ${record.state} | ${record.goal.slice(0, 80)}`);
+    return;
+  }
+  if (!id || rest.length !== 1) throw new Error('Specify exactly one workflow RUN_ID.');
+  if (action === 'status') {
+    const run = loadRun(root, id);
+    console.log(JSON.stringify(run, null, 2));
+    if (run.state === 'awaiting_approval') {
+      console.log(`\nReview plan: ${join(runDirectory(root, id), 'plan.md')}`);
+      console.log(`Approve: pageconductor workflow approve ${id} --digest ${run.planDigest}`);
+    } else if (['building', 'auditing', 'planning'].includes(run.state)) {
+      console.log('If the original process stopped, use explicit workflow recover. Never automatically rerun a build.');
+    }
+    return;
+  }
+  if (action === 'approve') {
+    const run = await approveWorkflow(root, id, options.digest);
+    console.log(`Approved plan ${run.planDigest} for ${id}.`);
+    console.log(`To run build and audit: pageconductor workflow resume ${id}`);
+    return;
+  }
+  if (action === 'resume') {
+    const run = await resumeWorkflow(root, id, config);
+    console.log(`Workflow ${id}: ${run.state}`);
+    console.log(`Audit report: ${join(runDirectory(root, id), 'audit.json')}`);
+    console.log(`Review: pageconductor workflow review ${id}`);
+    return;
+  }
+  if (action === 'recover') {
+    if (!options.choice) throw new Error('Recovery requires --choice retry-plan|acknowledge-build|retry-audit');
+    const run = await recoverWorkflow(root, id, options.choice, config, {}, { unlock: !!options.unlock });
+    console.log(`Recovered workflow ${id}: ${run.state}. Inspect artifacts before proceeding.`);
+    return;
+  }
+  if (action === 'review') {
+    const run = await finishWorkflow(root, id, { accept: !!options.accept });
+    console.log(`Workflow ${id}: ${run.state}`);
+    if (!options.accept) {
+      console.log(`Audit: ${join(runDirectory(root, id), 'audit.json')}`);
+      const gitStatus = runProcess('git', ['status', '--short'], root, { capture: true });
+      const gitDiff = runProcess('git', ['diff', '--stat'], root, { capture: true });
+      console.log('Git status:\n' + gitStatus.stdout);
+      console.log('Diff summary:\n' + gitDiff.stdout);
+      console.log(`If you accept the result: pageconductor workflow review ${id} --accept`);
+    }
+    return;
+  }
+  if (action === 'cancel') {
+    const run = await cancelWorkflow(root, id);
+    console.log(`Workflow ${id}: ${run.state}`);
+    return;
+  }
+  throw new Error('Unknown workflow action. Use start, list, status, approve, resume, recover, review, cancel.');
+}
+
 export async function main(args) {
   const [cmd, ...rest] = args;
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') { console.log(HELP); return; }
@@ -162,6 +245,7 @@ export async function main(args) {
     return;
   }
   const config = readConfig(root);
+  if (cmd === 'workflow') return outputWorkflow(root, positionals, options, config);
   if (cmd === 'plan' || cmd === 'build') {
     const goal = positionals.join(' ').trim();
     if (!goal) throw new Error(`Provide a goal: pageconductor ${cmd} "..."`);

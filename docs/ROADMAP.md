@@ -12,7 +12,7 @@ CLI (Node / eventually TypeScript)
   -> Git integration (branch, diff, optional reviewed PR)
 ```
 
-### M0.1: Working integrations (current scaffold)
+### M0.1: Working integrations
 - [x] Command dispatch, help, version, doctor
 - [x] Project configuration
 - [x] Provider process adapters (OpenCode, Ollama)
@@ -23,12 +23,16 @@ CLI (Node / eventually TypeScript)
 - [ ] Real-world smoke tests for Ollama and shadcn registries
 
 ### M0.2: Reliable workflow runner
-- [ ] Persist runs in `.pageconductor/runs/` with progress, exit statuses, timestamps
+- [x] Persist runs in `.pageconductor/runs/` with progress, exit statuses, timestamps
 - [ ] Project creation from explicitly selected templates
 - [ ] Config/schema validation + setup wizard
 - [ ] Automated Git worktree isolation
-- [ ] Preview plan -> approve -> build -> test -> review diff
-- [ ] OS-specific subprocess and cancellation integration tests
+- [x] Preview plan -> approve -> build -> test -> review diff (OpenCode only, human gates)
+- [x] Async subprocess adapter, fail-closed Windows shim resolver, mock process/transition tests
+- [x] CI matrix for Windows/Linux Node 20/24 (execution pending first PR)
+- [ ] Windows 11 end-to-end and process cancellation smoke tests (not verified yet)
+
+Workflow architecture and recovery: [WORKFLOW.md](WORKFLOW.md).
 
 ### M0.3: Visual QA
 - [ ] Playwright CLI snapshots & screenshots
