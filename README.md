@@ -2,7 +2,34 @@
 
 **A local-first AI-assisted website development orchestrator.**
 
-> MVP v0.1.0. **Not** a complete autonomous website builder yet. This initial prototype integrates the OpenCode CLI and local Ollama planning, previews shadcn component installation, runs existing npm-based quality scripts, and checks for a clean Git worktree before an AI build.
+> MVP v0.2.0. **Not** a complete autonomous website builder yet. This initial prototype integrates the OpenCode CLI and local Ollama planning, previews shadcn component installation, runs existing npm-based quality scripts, and checks for a clean Git worktree before an AI build.
+
+
+## Workflow Engine v0.2 (approval-based)
+
+The new `workflow` command combines **planning → human approval → build →
+audit → review**, with a versioned checkpoint per run and SHA-256 plan approvals.
+
+```powershell
+# In an EXISTING trusted frontend Git repository:
+pageconductor init
+pageconductor workflow start "Build an accessible portfolio" --model openai/gpt-6-sol
+pageconductor workflow start "Build an accessible portfolio" --model openai/gpt-6-sol --run
+pageconductor workflow list
+pageconductor workflow status <RUN_ID>
+# Read the generated plan.md, then:
+pageconductor workflow approve <RUN_ID> --digest <SHA256>
+# Executes OpenCode build + available package.json quality scripts:
+pageconductor workflow resume <RUN_ID>
+pageconductor workflow review <RUN_ID>
+pageconductor workflow review <RUN_ID> --accept
+```
+
+The first `start` is only a preview. The second calls AI to generate a plan.
+**Never approve a plan without reading it.** On interrupted builds, `resume`
+refuses to rerun the build; use explicit, manual recovery after checking Git.
+No automatic commit/push/deploy actions occur. Full state model and recovery
+instructions: [Workflow guide](docs/WORKFLOW.md).
 
 ## Prerequisites
 
@@ -45,7 +72,7 @@ pageconductor plan "Plan an accessible portfolio" --provider ollama --run
 
 OpenCode can use many hosted and local models according to its configuration; PageConductor does not store API tokens.
 
-## What exists in MVP 0.1
+## Feature status
 
 | Feature | Status |
 | --- | --- |
@@ -56,12 +83,13 @@ OpenCode can use many hosted and local models according to its configuration; Pa
 | OpenCode build agent | Adapter implemented, explicit `--apply` and clean Git tree required |
 | shadcn and compatible registries | Adapter implemented; registry namespaces are configured on installation, explicit `--apply` required |
 | npm/pnpm/bun script audit with JSON report | Working, requires a trusted project and dependencies |
+| Approval-based sequential workflow / persistent checkpoints | Working, real-provider Windows smoke pending |
 | Multi-agent planning and automatic tool selection | Roadmap |
 | Playwright and Lighthouse integrations | Roadmap |
 | Automatic screenshot iteration and bug fixing | Roadmap |
 | GitHub PR creation and deployment | Roadmap, explicit approval only |
 
-**Status caveat:** The OpenCode, Ollama, shadcn and Windows shim integrations are implemented but have not been exercised in this isolated environment. Automated tests cover the locally testable core. Follow real-project smoke tests before promising production compatibility.
+**Status caveat:** The OpenCode, Ollama and shadcn integrations have not been exercised live in the test environment; the user has confirmed standalone OpenCode planning on Windows for v0.1. The new workflow and subprocess adapter still need Windows smoke tests. Automated tests cover the locally testable core. Follow real-project smoke tests before promising production compatibility.
 
 ## Safety
 
@@ -73,7 +101,14 @@ OpenCode can use many hosted and local models according to its configuration; Pa
 - The source project, templates and UI component libraries may have different licenses. Do not redistribute third-party code blindly.
 - No automatic commit, push, deployment, purchasing or token storage.
 - Local AI prompts and reports are gitignored; report outputs may still contain sensitive data and should be reviewed before sharing.
-- On Windows, package manager and OpenCode launchers may be `.cmd` shims, so this MVP uses Node's Windows shell compatibility for an allowlisted executable set. Do not expand that allowlist to arbitrary commands without robust escaping and sandboxing.
+- On Windows, subprocess commands resolve known `.cmd` shims to native `.exe` or Node entrypoints. Unrecognized shims fail closed; no `shell: true` argument interpolation.
+
+## Windows test regression fix (0.1.1)
+
+CLI subprocess tests use `fileURLToPath(new URL(...))` rather than `URL.pathname`.
+On Windows, `URL.pathname` yields paths resembling `/C:/...`, which cause
+Node.js to exit with code 1 even though the globally linked CLI works.
+The tests also include subprocess stderr in failed assertions to ease troubleshooting.
 
 ## Development
 

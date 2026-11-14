@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+export { runProcess } from './process.js';
+import { runProcess } from './process.js';
 import { randomUUID } from 'node:crypto';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const DEFAULT_CONFIG = {
   version: 1,
   provider: 'opencode',
@@ -23,7 +25,7 @@ export function parseArgs(args) {
       const [key, inline] = arg.slice(2).split('=', 2);
       if (!/^[a-z][a-z-]*$/.test(key)) throw new Error(`Invalid option: ${arg}`);
       if (inline !== undefined) options[key] = inline;
-      else if (['project', 'provider', 'model'].includes(key)) {
+      else if (['project', 'provider', 'model', 'digest', 'choice'].includes(key)) {
         if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`Missing value for --${key}`);
         options[key] = args[++i];
       } else options[key] = true;
@@ -48,7 +50,7 @@ export function initProject(root) {
   if (created) writeFileSync(configPath(root), JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', { flag: 'wx' });
   // Keep local prompts and audit logs out of public GitHub repos by default.
   const gitignore = join(root, '.gitignore');
-  const ignoreLines = ['.pageconductor/prompts/', '.pageconductor/plans/', '.pageconductor/reports/'];
+  const ignoreLines = ['.pageconductor/prompts/', '.pageconductor/plans/', '.pageconductor/reports/', '.pageconductor/runs/'];
   const original = existsSync(gitignore) ? readFileSync(gitignore, 'utf8') : '';
   const missing = ignoreLines.filter((x) => !original.split(/\r?\n/).includes(x));
   if (missing.length) {
@@ -59,26 +61,6 @@ export function initProject(root) {
 }
 
 
-// User-controlled arguments are passed as argv, never interpolated into a shell string.
-// On Windows the npm/opencode shims are .cmd; allow shell only for a carefully fixed
-// command + strictly validated operands (prompts are attached as files).
-export function runProcess(bin, args, cwd, { capture = false } = {}) {
-  const windowsShim = process.platform === 'win32' && ['npm', 'pnpm', 'npx', 'opencode', 'bun'].includes(bin);
-  const result = spawnSync(bin, args, {
-    cwd,
-    encoding: 'utf8',
-    shell: windowsShim,
-    stdio: capture ? 'pipe' : 'inherit',
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 300_000
-  });
-  return {
-    exitCode: result.status ?? 1,
-    stdout: result.stdout || '',
-    stderr: result.stderr || '',
-    error: result.error?.message
-  };
-}
 export function toolAvailable(bin) {
   const cmd = process.platform === 'win32' ? 'where' : 'which';
   const r = spawnSync(cmd, [bin], { encoding: 'utf8', stdio: 'pipe' });

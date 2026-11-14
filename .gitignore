@@ -2,10 +2,7 @@ node_modules/
 .pageconductor/prompts/
 .pageconductor/plans/
 .pageconductor/reports/
-.env
-.env.*
-!.env.example
-node_modules/
+.pageconductor/runs/
 .env
 .env.*
 !.env.example
